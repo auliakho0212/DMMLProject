@@ -1,0 +1,1065 @@
+---
+title: "Bank Term Deposit Subscription Prediction using Machine Learning"
+author: "Team 17"
+editor: visual
+number-sections: true
+format: 
+  pdf:
+    geometry: "left=2cm, right=2cm, top=2.5cm, bottom=2.5cm"
+execute:
+  eval: true
+  warning: false
+  message: false
+---
+
+# Introduction {#sec-intro}
+
+Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed.
+
+Furthermore, the research question is to make prediction whether the client will subscribe (yes/no) a term deposit or not. There are 19 attributes available in the dataset including bank client data, last contact of the current campaign information, social-economic, and others.
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: tbl-dataset-head
+#| tbl-cap: First five entries of the Bank Marketing Dataset.
+
+library(tidyverse)
+library(gt)
+
+# Read CSV from data dir
+data <- read_csv("group_17.csv")
+
+# Display the first 5 rows
+data[,1:9] |> 
+  slice_head(n=5) |>
+  gt() |>
+  cols_label(
+    age = html("Age"),
+    job = html("Job"),
+    marital = html("Marital"),
+    education = html("Education"),
+    default = html("Default"),
+    housing = html("Housing"),
+    loan = html("Loan"),
+    contact = html("Contact"),
+    month = html("Month"),
+  )
+
+data[,10:16] |> 
+  slice_head(n=5) |>
+  gt() |>
+  cols_label(
+    day_of_week = html("Day of Week"),
+    duration = html("Duration"),
+    campaign = html("Campaign"),
+    pdays = html("Pdays"),
+    previous = html("Previous"),
+    poutcome = html("Poutcome"),
+    emp.var.rate = html("Employment Variation Rate"),
+  )
+
+data[,17:21] |> 
+  slice_head(n=5) |>
+  gt() |>
+  cols_label(
+    cons.price.idx = html("Consumer Price Index"),
+    cons.conf.idx = html("Consumer Confidence Index"),
+    euribor3m = html("Euribor"),
+    nr.employed = html("Number of Employees"),
+    y = html("Subscribe")
+  )
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Import Libraries
+
+library(skimr)
+library(knitr)
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(GGally)
+library(caret)
+library(Boruta)
+```
+
+# Exploratory Data Analysis
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: tbl-summary-stats
+#| tbl-cap: Summary statistics of the Bank Marketing Dataset.
+
+# Creating summary statistics
+
+# Summary statistics with adjusted skim()
+my_skim <- skim_with(
+  base = sfl(n = length),
+  character = sfl(min=NULL,max=NULL,empty=NULL,whitespace=NULL),
+  numeric = sfl(p0=NULL, p100=NULL, hist=NULL))
+knit_print(my_skim(data))
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Compute percentage of missing values
+
+missing_percentages <- data %>%
+  summarise_all(~sum(is.na(.)))/nrow(data)
+
+missing_percentages_sorted <- missing_percentages %>%
+  gather(key = "Column", value = "Missing_Percentages") %>%
+  arrange(desc(Missing_Percentages)) %>%
+  filter(Missing_Percentages>0)
+
+ggplot(missing_percentages_sorted, aes(x = reorder(Column, Missing_Percentages), y = Missing_Percentages)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Percentage of Missing Values in Each Variable", x = "Variables", y = "Missing Percentages") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Split the dataset into Training, Validation, and Test
+
+set.seed(123)
+
+# Split training 80% and test 20%
+index <- sample(1:nrow(data), nrow(data)*0.8)
+training <- data[index, ]
+test <- data[-index, ]
+
+# Split train 60% and validation 20%
+index <- sample(1:nrow(training), nrow(training)*0.75)
+train <- training[index, ]
+valid <- training[-index, ]
+
+# Check the size
+print(paste("Train nrows:", nrow(train)))
+print(paste("Valid nrows:", nrow(valid)))
+print(paste("Test nrows:", nrow(test)))
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+ggplot(train, aes(x = y)) +
+geom_bar() +  # Create a bar plot
+labs(x = "Subscribe", y = "Count")
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: fig-boxplot1
+#| fig-cap: The relationship between binary response and continuous explanatory variables.
+#| fig-align: center
+#| fig-width: 7
+#| fig-height: 10
+#| message: false
+
+# Creating Boxplot
+
+p1 <- ggplot(training, aes(x=y, y=age)) + geom_boxplot() +
+  labs(x="subscribe",y="Age")
+p2 <- ggplot(training, aes(x=y, y=duration)) + geom_boxplot() +
+  labs(x="subscribe",y="Duration")
+p3 <- ggplot(training, aes(x=y, y=campaign)) + geom_boxplot() +
+  labs(x="subscribe",y="Campaign")
+p4 <- ggplot(training, aes(x=y, y=pdays)) + geom_boxplot() +
+  labs(x="subscribe",y="Pdays")
+p5 <- ggplot(training, aes(x=y, y=previous)) + geom_boxplot() +
+  labs(x="subscribe",y="Previous")
+p6 <- ggplot(training, aes(x=y, y=emp.var.rate)) + geom_boxplot() +
+  labs(x="subscribe",y="Emp. Variation Rate")
+p7 <- ggplot(training, aes(x=y, y=cons.price.idx)) + geom_boxplot() +
+  labs(x="subscribe",y="Cons. Price Index")
+p8 <- ggplot(training, aes(x=y, y=cons.conf.idx)) + geom_boxplot() +
+  labs(x="subscribe",y="Cons. Confidence Index")
+p9 <- ggplot(training, aes(x=y, y=euribor3m)) + geom_boxplot() +
+  labs(x="subscribe",y="Euribor")
+p10 <- ggplot(training, aes(x=y, y=nr.employed)) + geom_boxplot() +
+  labs(x="subscribe",y="Number of Employees")
+
+# Plot in Grid
+grid.arrange(p1, p2, p3, p4, 
+             p5, p6, p7, p8,
+             p9, p10, ncol=2)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: fig-barplot
+#| fig-cap: The relationship between binary response and categorical explanatory variables.
+#| fig-align: center
+#| fig-width: 8
+#| fig-height: 20
+#| message: false
+
+p1 <- ggplot(training, aes(x=job, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Job", y="Percent", fill="subscribe") +
+coord_flip()
+
+p2 <- ggplot(training, aes(x=marital, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Marital", y="Percent", fill="subscribe") +
+coord_flip()
+
+p3 <- ggplot(training, aes(x=education, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Education", y="Percent", fill="subscribe") +
+coord_flip()
+
+p4 <- ggplot(training, aes(x=default, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Default", y="Percent", fill="subscribe") +
+coord_flip()
+
+p5 <- ggplot(training, aes(x=housing, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Housing", y="Percent", fill="subscribe") +
+coord_flip()
+
+p6 <- ggplot(training, aes(x=loan, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Loan", y="Percent", fill="subscribe") +
+coord_flip()
+
+p7 <- ggplot(training, aes(x=contact, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Contact", y="Percent", fill="subscribe") +
+coord_flip()
+
+p8 <- ggplot(training, aes(x=month, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Month", y="Percent", fill="subscribe") +
+coord_flip()
+
+p9 <- ggplot(training, aes(x=day_of_week, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Day of Week", y="Percent", fill="subscribe") +
+coord_flip()
+
+p10 <- ggplot(training, aes(x=poutcome, fill=y)) + geom_bar(position = "fill") +
+scale_y_continuous(labels = scales::percent) +
+labs(x="Poutcome", y="Percent", fill="subscribe") +
+coord_flip()
+
+# Plot in Grid
+grid.arrange(p1, p2, p3, p4, 
+             p5, p6, p7, p8,
+             p9, p10, ncol=1)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: fig-scatterplot
+#| fig-cap: The relationship between continuous explanatory variables.
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+#| message: false
+
+numeric_cols <- names(select_if(training, is.numeric))
+
+ggpairs(training,
+        columns=numeric_cols,
+        ggplot2::aes(colour = y),
+        axisLabels = "none",
+        )
+```
+
+According to the plots:
+
+-   \[Density Plots\] There is no noticeable pattern from the continuous explanatory variables which are able to distinguish "yes" or "no" subscribe really well.
+
+-   \[Scatter Plots\] There are some significant correlations, which are considerably moderate to strong. However, points in their scatterplots are more sparse, because the values between observations are similar to each other. Those variables belong to social-economic attributes. Should we implement PCA?
+
+    -   nr.employed vs. emp.var.rate (0.909)
+
+    -   euribor3m vs. emp.var.rate (0.973)
+
+    -   cons.price.idx vs. emp.var.rate (0.779)
+
+    -   euribor3m vs. nr.employed (0.946)
+
+-   \[Density and Box Plots\] Some variables are skewed, is it required to standardize them?
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Try using PCA
+
+# Check standard deviation
+round(sqrt(diag(cov(training[,16:20]))),1)
+
+# Perform PCA
+socio.econ.pca <- princomp(training[,16:20],cor=T)
+
+# Display summary
+summary(socio.econ.pca)
+plot(socio.econ.pca)
+
+socio.econ.pca2 <- as.data.frame(socio.econ.pca$scores[,1:2])
+socio.econ.pca2$y <- training$y
+ggplot(socio.econ.pca2, aes(x=c(1:nrow(training)),y=Comp.1,color=as.factor(y))) + 
+  geom_jitter(width = 0.75, height = 0.75) +
+  labs(x='Index', y='Comp.1', title='PCA')
+```
+
+# Data Preprocessing {#section-preprocessing}
+
+Steps:
+
+-   Remove `default` because \~20% of them are NAs, and the rest is only "no" for having credit in default.
+
+-   Remove `pdays` because most of the values marked as 999.
+
+-   Remove `duration` as this feature is available after the call, so it should not be used for prediction.
+
+-   Remove rows containing NAs.
+
+-   Perform PCA to socio-economic features.
+
+-   Perform scaling to numerical features,
+
+-   Convert categorical features as dummies.
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Remove default, pdays, and duration
+train <- train %>% select(-default, -pdays, -duration)
+valid <- valid %>% select(-default, -pdays, -duration)
+test <- test %>% select(-default, -pdays, -duration)
+
+# Remove NAs
+train <- na.omit(train)
+valid <- na.omit(valid)
+test <- na.omit(test)
+
+set.seed(123)
+# PCA to socio-economic features
+socio.econ.pca <- princomp(train[,13:17],cor=T)
+train$pca.socio.economic <- as.data.frame(socio.econ.pca$scores)$'Comp.1'
+valid$pca.socio.economic <- as.data.frame(predict(socio.econ.pca,valid[,13:17]))$'Comp.1'
+test$pca.socio.economic <- as.data.frame(predict(socio.econ.pca,test[,13:17]))$'Comp.1'
+
+train <- train[, -c(13:17)]
+valid <- valid[, -c(13:17)]
+test <- test[, -c(13:17)]
+
+# Scaling numerical variables
+numeric_cols <- names(select_if(train, is.numeric))
+
+var.mean <- apply(train[, numeric_cols],2,mean) #calculate mean
+var.sd <- apply(train[, numeric_cols],2,sd)   #calculate standard deviation
+
+# standardise training, validation and test sets
+train.scale <- t(apply(train[, numeric_cols], 1, function(x) (x-var.mean)/var.sd))
+valid.scale <- t(apply(valid[, numeric_cols], 1, function(x) (x-var.mean)/var.sd))
+test.scale <- t(apply(test[, numeric_cols], 1, function(x) (x-var.mean)/var.sd))
+
+train[, numeric_cols] <- train.scale
+valid[, numeric_cols] <- valid.scale
+test[, numeric_cols] <- test.scale
+  
+# Convert categorical to dummies
+
+# Convert response variable to be 0 and 1
+train$y <- ifelse(train$y == "yes", 1, 0)
+valid$y <- ifelse(valid$y == "yes", 1, 0)
+test$y <- ifelse(test$y == "yes", 1, 0)
+
+# Define one-hot encoding function
+dummy <- dummyVars(" ~ .", data=train)
+
+# Convert to dummies
+train <- data.frame(predict(dummy, newdata=train))
+valid <- data.frame(predict(dummy, newdata=valid))
+test <- data.frame(predict(dummy, newdata=test))
+```
+
+# Model Fitting
+
+## Decision Tree
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(rpart)
+library(rpart.plot)
+
+set.seed(123)
+
+DT_full_classifier <-  rpart(
+  y ~ ., 
+  data=train, 
+  method="class",
+  parms = list(split = "gini"),
+  control=rpart.control(minsplit=5, maxdepth = 30, cp = -1)
+)
+plotcp(DT_full_classifier)
+
+cptable <- as.data.frame(DT_full_classifier$cptable)
+min_index <- which.min(cptable$xerror)
+cptable[min_index, ] %>%
+  kable()
+```
+
+Parameter c will be chosen based minimum error strategy, which has minimum cross-validated error (x-error). In this case, when xerror = 0.9587 and then cp = 0.00954.
+
+```{r}
+#| echo: false
+#| warning: false
+
+set.seed(123)
+
+DT_prune_classifier <-  rpart(
+  y ~ ., 
+  data=train, 
+  method="class",
+  parms = list(split = "gini"),
+  control=rpart.control(cp = 0.01)
+)
+rpart.plot(DT_prune_classifier,type=2,extra=4)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+# Prediction to train dataset
+train.pred <- predict(DT_prune_classifier, 
+                      newdata=subset(train, select = -c(y)),
+                      type="class")
+train$y <- factor(train$y, levels = levels(train.pred))
+
+f_score <- c(F1_Score(train.pred, train$y, positive="1"))
+precision <- c(Precision(train.pred, train$y, positive="1"))
+recall <- c(Recall(train.pred, train$y, positive="1"))
+
+# Prediction to valid dataset
+valid.pred <- predict(DT_prune_classifier, 
+                      newdata=subset(valid, select = -c(y)),
+                      type="class")
+valid$y <- factor(valid$y, levels = levels(valid.pred))
+
+f_score <- c(f_score, F1_Score(valid.pred, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+F1-score is low, but it does not seem overfitting. Then, the contributor of this is very low Precision score means False Positive (FP) cases overwhelm True Positive (TP). It could be due to the dataset is imbalance.
+
+## Random Forest
+
+Link: <https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r/>
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Grid Search Using Caret
+
+library(caret)
+
+# Define custom summary function for F1 score
+f1_summary <- function(data, lev = NULL, model = NULL) {
+  f1_score <- F1_Score(data$pred, data$obs, positive = "1")
+  names(f1_score) <- "F1"
+  f1_score
+}
+
+control <- trainControl(method="repeatedcv", 
+                        number=5, 
+                        repeats=2,
+                        summaryFunction = f1_summary,
+                        search="grid")
+tunegrid <- expand.grid(.mtry=c(5,10,20,30,ncol(train)-1))
+
+results <-data.frame()
+for (ntree in c(25,50,100,200)) {
+ set.seed(123)
+ fit <- train(y~., data=train, method="rf", tuneGrid=tunegrid, trControl=control, ntree=ntree)
+ no.tree <- array(ntree, dim = c(5, 1))
+ result <- cbind(no.tree, round(fit$results, digits=4))
+ results <- rbind(results, result)
+}
+
+ggplot(data = results[,-4], 
+       mapping = aes(x = as.factor(mtry), y = F1)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~ no.tree, ncol = 1) +
+  labs(x = "mtyr", y = "F1", subtitle = "ntree") 
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(randomForest)
+
+# Searching for best mtry with built-in packages in R
+
+set.seed(123)
+bestmtry <- tuneRF(x=subset(train, select = -c(y)), 
+                   y=train$y, 
+                   stepFactor=3,
+                   improve=0.001,
+                   ntree=100)
+```
+
+In this case, ntree = 100 and mtyr = 49 is chosen because of high F-score with more complex Random Forest architecture, in this case Bagging.
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(randomForest)
+
+set.seed(123)
+RF_classifier_prune <- randomForest(y ~ .,
+                              data=train,
+                              mtyr=49,
+                              ntree=100)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+# Prediction to train dataset
+train.pred <- predict(RF_classifier_prune, 
+                      newdata=subset(train, select = -c(y)),
+                      type="class")
+train$y <- factor(train$y, levels = levels(train.pred))
+
+f_score <- c(F1_Score(train.pred, train$y, positive="1"))
+precision <- c(Precision(train.pred, train$y, positive="1"))
+recall <- c(Recall(train.pred, train$y, positive="1"))
+
+# Prediction to valid dataset
+valid.pred <- predict(RF_classifier_prune, 
+                      newdata=subset(valid, select = -c(y)),
+                      type="class")
+valid$y <- factor(valid$y, levels = levels(valid.pred))
+
+f_score <- c(f_score, F1_Score(valid.pred, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+The performance of Random Forest is much more overfit than Decision Tree. It is hard to say that Decision Tree is better than Random Forest.
+
+## KNN
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(class)
+
+set.seed(123)
+
+K <- c(1:15)
+cv.corr <- c()
+for (k in K){
+  train.pred <- knn.cv(train, train$y, k=k)
+  cv.corr[k] <- mean(train$y == train.pred)
+}
+
+plot(K, cv.corr, type="b", ylab="leave-one-out cross-validation correct classification rate")
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+set.seed(123)
+
+KNN_classifier <- knn.cv(train, train$y, k=6)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+set.seed(123)
+# Prediction to train dataset
+train.pred <- knn(train, train, train$y, k=6)
+train$y <- factor(train$y, levels = levels(train.pred))
+
+f_score <- c(F1_Score(train.pred, train$y, positive="1"))
+precision <- c(Precision(train.pred, train$y, positive="1"))
+recall <- c(Recall(train.pred, train$y, positive="1"))
+
+set.seed(123)
+# Prediction to valid dataset
+valid.pred <- knn(train, valid, train$y, k=6)
+valid$y <- factor(valid$y, levels = levels(valid.pred))
+
+f_score <- c(f_score, F1_Score(valid.pred, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+## LQA
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MASS)
+
+LDA_classifier <- lda(y~., data=train)
+
+LDA_classifier.pred.tr <- predict(LDA_classifier)
+
+dataset <- data.frame(Type=train$y, lda=LDA_classifier.pred.tr$x)
+ggplot(dataset, aes(x=LD1)) + 
+  geom_density(aes(group=Type, colour=Type, fill=Type), alpha=0.3)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+set.seed(123)
+# Prediction to train dataset
+train.pred <- predict(LDA_classifier, train)
+#train$y <- factor(train$y, levels = levels(train.pred$class))
+
+f_score <- c(F1_Score(train.pred$class, train$y, positive="1"))
+precision <- c(Precision(train.pred$class, train$y, positive="1"))
+recall <- c(Recall(train.pred$class, train$y, positive="1"))
+
+set.seed(123)
+# Prediction to valid dataset
+valid.pred <- predict(LDA_classifier, valid)
+#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
+
+f_score <- c(f_score, F1_Score(valid.pred$class, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred$class, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred$class, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+## QDA
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MASS)
+
+QDA_classifier <- qda(y~., data=train[,c(numeric_cols,"y")])
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+set.seed(123)
+# Prediction to train dataset
+train.pred <- predict(QDA_classifier, train[,c(numeric_cols,"y")])
+#train$y <- factor(train$y, levels = levels(train.pred$class))
+
+f_score <- c(F1_Score(train.pred$class, train$y, positive="1"))
+precision <- c(Precision(train.pred$class, train$y, positive="1"))
+recall <- c(Recall(train.pred$class, train$y, positive="1"))
+
+set.seed(123)
+# Prediction to valid dataset
+valid.pred <- predict(QDA_classifier, valid[,c(numeric_cols,"y")])
+#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
+
+f_score <- c(f_score, F1_Score(valid.pred$class, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred$class, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred$class, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+## SVM
+
+```{r}
+#| echo: false
+#| warning: false
+
+set.seed(123)
+
+cost_range <- c(0.01,0.1,1,10,100)
+degree_range <- 2:5
+gamma_range <- c(0.01,0.1,1,10,100)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library("e1071")
+
+set.seed(123)
+
+cost_range <- c(0.01,0.1,1,10,100)
+degree_range <- 2:5
+
+SVM_poly <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", cost=cost_range, degree=degree_range)
+summary(SVM_poly)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library("e1071")
+
+set.seed(123)
+
+cost_range <- c(1,10,100)
+gamma_range <- c(0.01,0.1,1,10,100)
+
+SVM_RBF <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", cost=cost_range, gamma=gamma_range)
+summary(SVM_RBF)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library("e1071")
+
+#degree.opt <- SVM_poly$best.parameters[1]
+#cost.opt <- SVM_poly$best.parameters[2]
+
+# SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", degree=degree.opt, cost=cost.opt)
+
+SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", gamma=0.01, cost=100)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Train","Validation")
+
+# Prediction to train dataset
+train.pred <- predict(SVM_classifier,train)
+train$y <- factor(train$y, levels = levels(train.pred))
+
+f_score <- c(F1_Score(train.pred, train$y, positive="1"))
+precision <- c(Precision(train.pred, train$y, positive="1"))
+recall <- c(Recall(train.pred, train$y, positive="1"))
+
+# Prediction to valid dataset
+valid.pred <- predict(SVM_classifier,valid)
+valid$y <- factor(valid$y, levels = levels(valid.pred))
+
+f_score <- c(f_score, F1_Score(valid.pred, valid$y, positive="1"))
+precision <- c(precision, Precision(valid.pred, valid$y, positive="1"))
+recall <- c(recall, Recall(valid.pred, valid$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+# Model Selection
+
+```{r}
+#| echo: false
+#| warning: false
+
+dataset <- c("DecisionTree","RandomForest","KNN","LDA","QDA","SVM")
+
+# Prediction to test dataset
+
+# Decision Tree
+
+test.pred <- predict(DT_prune_classifier, 
+                      newdata=subset(test, select = -c(y)),
+                      type="class")
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(F1_Score(test.pred, test$y, positive="1"))
+precision <- c(Precision(test.pred, test$y, positive="1"))
+recall <- c(Recall(test.pred, test$y, positive="1"))
+
+# RF
+
+test.pred <- predict(RF_classifier_prune, 
+                      newdata=subset(test, select = -c(y)),
+                      type="class")
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(f_score, F1_Score(test.pred, test$y, positive="1"))
+precision <- c(precision, Precision(test.pred, test$y, positive="1"))
+recall <- c(recall, Recall(test.pred, test$y, positive="1"))
+
+# KNN
+
+set.seed(123)
+test.pred <- knn(train, test, train$y, k=6)
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(f_score, F1_Score(test.pred, test$y, positive="1"))
+precision <- c(precision, Precision(test.pred, test$y, positive="1"))
+recall <- c(recall, Recall(test.pred, test$y, positive="1"))
+
+# LDA
+
+set.seed(123)
+# Prediction to valid dataset
+test.pred <- predict(LDA_classifier, test)
+#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
+
+f_score <- c(f_score, F1_Score(test.pred$class, test$y, positive="1"))
+precision <- c(precision, Precision(test.pred$class, test$y, positive="1"))
+recall <- c(recall, Recall(test.pred$class, test$y, positive="1"))
+
+# QDA
+
+set.seed(123)
+# Prediction to valid dataset
+test.pred <- predict(QDA_classifier, test[,c(numeric_cols,"y")])
+#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
+
+f_score <- c(f_score, F1_Score(test.pred$class, test$y, positive="1"))
+precision <- c(precision, Precision(test.pred$class, test$y, positive="1"))
+recall <- c(recall, Recall(test.pred$class, test$y, positive="1"))
+
+# SVM
+
+test.pred <- predict(SVM_classifier,test)
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(f_score, F1_Score(test.pred, test$y, positive="1"))
+precision <- c(precision, Precision(test.pred, test$y, positive="1"))
+recall <- c(recall, Recall(test.pred, test$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+Which one is the best? Which metrics we should prioritize?
+
+# Conclusion
+
+So far, KNN is the best one.
+
+# Next: Improve Performance
+
+## Feature Selection (Boruta)
+
+Link: <https://www.datacamp.com/tutorial/feature-selection-R-boruta>
+
+The algorithm to perform top-down search of relevant features using random forest model by iteratively eliminating irrelevant features by comparing original and random shadow features. Boruta does not need human arbitrary decision.
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(Boruta)
+
+set.seed(123)
+
+boruta <- Boruta(y~., data = train, doTrace = 2)
+
+boruta_df <- attStats(boruta)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
+
+set.seed(123)
+
+KNN_classifie_2 <- knn.cv(train[,c(features_list,"y")], 
+                         train$y, 
+                         k=6)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Test")
+
+set.seed(123)
+# Prediction to test dataset
+test.pred <- knn(train[,c(features_list,"y")], 
+                 test[,c(features_list,"y")], 
+                 train$y, k=6)
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(F1_Score(test.pred, test$y, positive="1"))
+precision <- c(Precision(test.pred, test$y, positive="1"))
+recall <- c(Recall(test.pred, test$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
+
+## Resampling (SMOTE) 
+
+Link:
+
+-   <https://spotintelligence.com/2023/02/17/smote-oversampling-python-r/#How_to_use_SMOTE_in_R>
+
+-   <https://rpubs.com/hwulanayu/smote-in-r>
+
+Traditional ML might not performing well for imbalanced dataset because it will be bias to the majority class. SMOTE algorithm works by selecting minority class observations randomly and then find k nearest minority class neighbors, and then generate new samples by doing interpolation between them.
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(smotefamily)
+
+set.seed(123)
+
+smote_train <- SMOTE(X = subset(train, select = -c(y)), 
+                     target = train[,"y"],
+                     dup_size = 2)
+smote_train <- smote_train$data # extract only the balanced dataset
+smote_train$class <- as.factor(smote_train$class)
+
+table(smote_train$class)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
+
+set.seed(123)
+
+KNN_classifie_3 <- knn.cv(smote_train[,c(features_list,"class")], 
+                          smote_train$class, 
+                          k=6)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(MLmetrics)
+
+dataset <- c("Test")
+
+set.seed(123)
+# Prediction to test dataset
+test.pred <- knn(smote_train[,c(features_list,"class")], 
+                 test[,c(features_list,"y")], 
+                 smote_train$class, k=6)
+test$y <- factor(test$y, levels = levels(test.pred))
+
+f_score <- c(F1_Score(test.pred, test$y, positive="1"))
+precision <- c(Precision(test.pred, test$y, positive="1"))
+recall <- c(Recall(test.pred, test$y, positive="1"))
+
+performance_summary <- data.frame(Dataset = dataset, 
+                                  F_score = round(f_score, digits=4), 
+                                  Precision = round(precision, digits=4),
+                                  Recall = round(recall, digits=4))
+
+performance_summary %>%
+   kable()
+```
