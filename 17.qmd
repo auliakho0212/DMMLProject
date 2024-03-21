@@ -734,7 +734,15 @@ performance_summary <- data.frame(Dataset = dataset,
 
 performance_summary %>%
    kable()
+
+# Confusion matrix
+conf_matrix <- table(Actual = train$y, Predicted = train.pred)
+cat("Confusion Matrix:\n", conf_matrix, "\n")
+conf_matrix <- table(Actual = valid$y, Predicted = valid.pred)
+cat("Confusion Matrix:\n", conf_matrix, "\n")
 ```
+
+KNN is a simple and effective classification algorithm suitable for this scenario. It's non-parametric and doesn't make any assumptions about the underlying data distribution. With a relatively large dataset like this (10,000 records), KNN can produce reasonable results without the need for complex tuning or parameter optimization.
 
 ## Linear Discriminant Analysis (LDA)
 
@@ -831,7 +839,6 @@ kable(summary_df, caption = "Summary of Numeric Predictors and Covariance Matrix
 -   **Implication for QDA:** The QDA assumes that each class has its own covariance matrix, which requires sufficient data to estimate. With a rank deficiency indicated by the ranks of 40 and 39 compared to 49 features, there's a clear signal that the data might not support estimating a full and unique covariance matrix for each class. This could compromise the reliability and stability of the QDA model. The evidence suggests that without addressing the rank deficiency issue, *QDA may not be the most appropriate model for this dataset*.
 
 ## SVM
-
 
 SVM is a powerful classification algorithm that works well for both linear and nonlinear data. It tries to find the hyperplane that best separates different classes in the feature space.
 
