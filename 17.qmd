@@ -6,7 +6,10 @@ number-sections: true
 format: 
   pdf:
     geometry: "left=2cm, right=2cm, top=2.5cm, bottom=2.5cm"
+editor_options: 
+  chunk_output_type: console
 execute:
+  echo: false
   eval: true
   warning: false
   message: false
@@ -22,7 +25,7 @@ Furthermore, the research question is to make prediction whether the client will
 #| echo: false
 #| warning: false
 #| label: tbl-dataset-head
-#| tbl-cap: First five entries of the Bank Marketing Dataset.
+#| tbl-cap: First five entries of the Bank Marketing Dataset
 
 library(tidyverse)
 library(gt)
@@ -165,8 +168,8 @@ labs(x = "Subscribe", y = "Count")
 #| label: fig-boxplot1
 #| fig-cap: The relationship between binary response and continuous explanatory variables.
 #| fig-align: center
-#| fig-width: 7
-#| fig-height: 10
+#| fig-width: 4
+#| fig-height: 3
 #| message: false
 
 # Creating Boxplot
@@ -344,6 +347,7 @@ Steps:
 #| echo: false
 #| warning: false
 
+library(dplyr)
 # Remove default, pdays, and duration
 train <- train %>% select(-default, -pdays, -duration)
 valid <- valid %>% select(-default, -pdays, -duration)
@@ -406,7 +410,6 @@ test <- data.frame(predict(dummy, newdata=test))
 
 library(rpart)
 library(rpart.plot)
-
 set.seed(123)
 
 DT_full_classifier <-  rpart(
@@ -447,7 +450,6 @@ rpart.plot(DT_prune_classifier,type=2,extra=4)
 #| warning: false
 
 library(MLmetrics)
-
 dataset <- c("Train","Validation")
 
 # Prediction to train dataset
@@ -658,103 +660,99 @@ performance_summary %>%
    kable()
 ```
 
-## LQA
+## Linear Discriminant Analysis (LDA)
+
+**Assessment of LDA Assumptions:**
+
+-   Normality
+
+    The presumption of normality is pivotal for the implementation of Linear Discriminant Analysis (LDA). Each numeric predictor within the confines of a class $k$ is expected to align with a Gaussian distribution. From the visual inspection of the density plots, particularly highlighted in @fig-scatterplot), reveals that certain variables exhibit substantial departures from the prototypical bell curve. Specifically, variables such as $\text{pdays}$ and $\text{previous}$ manifest pronounced skewness, with their distributions marked by an acute peak and lack of symmetry. These characteristics intimate a deviation from normality within the classes. Deviations of this nature could potentially compromise the LDA's proficiency in modeling and distinguishing between the different classes.
+
+-   Homoscedasticity
+
+    In the context of LDA, homoscedasticity means that each predictor variable should show similar variability across each category of the response variable. To evaluate this assumption using boxplots, two main components should be emphasized: the range of the boxes, which represents the interquartile range (IQR), and the lengths of the whiskers, which extend to the furthest points that are not considered outliers. Meanwhile, depicted in @fig-boxplot1, it shows the disparities in the spread and size of the boxplots between 'yes' and 'no' responses. This is particularly evident for variables such as $\text{duration}$ and $\text{campaign}$, where the presence of outliers is conspicuous. Such findings may signify a breach of the homoscedasticity assumption for these predictors.
+
+The analytical observations suggest that the assumptions requisite for LDA---normality and homoscedasticity---are not entirely satisfied for certain predictors in the dataset. Meanwhile, in practical terms, while LDA might still be utilized given its capacity to tolerate certain violations in large samples, the analytical prudence we exercise in this scenario will contribute significantly to the integrity of our results. The key lies in the model validation: an empirical assessment that will illuminate the true impact of any assumption deviations on predictive performance. Should the LDA model demonstrate strong predictive capabilities despite theoretical concerns, we may proceed with its application, albeit with an informed awareness of its limitations. Conversely, should the model falter under validation, our insights into the assumptions will guide us toward more suitable analytical techniques.
 
 ```{r}
 #| echo: false
 #| warning: false
 
 library(MASS)
+library(MLmetrics)
+set.seed(123)
 
+# Run LDA
 LDA_classifier <- lda(y~., data=train)
 
-LDA_classifier.pred.tr <- predict(LDA_classifier)
+# Prediction on training data
+train_pred <- predict(LDA_classifier, train)
 
-dataset <- data.frame(Type=train$y, lda=LDA_classifier.pred.tr$x)
-ggplot(dataset, aes(x=LD1)) + 
-  geom_density(aes(group=Type, colour=Type, fill=Type), alpha=0.3)
-```
+# Calculate the performance metrics for the training data
+f_score <- c(F1_Score(y_pred=train_pred$class, y_true=train$y, positive="1"))
+precision <- c(Precision(y_pred=train_pred$class, y_true=train$y, positive="1"))
+recall <- c(Recall(y_pred=train_pred$class, y_true=train$y, positive="1"))
 
-```{r}
-#| echo: false
-#| warning: false
+# Predict on validation data
+valid_pred <- predict(LDA_classifier, valid)
+  
+# Calculate the performance metrics for the validation data
+f_score <- c(f_score, F1_Score(y_pred=valid_pred$class, y_true=valid$y, positive="1"))
+precision <- c(precision, Precision(y_pred=valid_pred$class, y_true=valid$y, positive="1"))
+recall <- c(recall, Recall(y_pred=valid_pred$class, y_true=valid$y, positive="1"))
 
-library(MLmetrics)
-
-dataset <- c("Train","Validation")
-
-set.seed(123)
-# Prediction to train dataset
-train.pred <- predict(LDA_classifier, train)
-#train$y <- factor(train$y, levels = levels(train.pred$class))
-
-f_score <- c(F1_Score(train.pred$class, train$y, positive="1"))
-precision <- c(Precision(train.pred$class, train$y, positive="1"))
-recall <- c(Recall(train.pred$class, train$y, positive="1"))
-
-set.seed(123)
-# Prediction to valid dataset
-valid.pred <- predict(LDA_classifier, valid)
-#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
-
-f_score <- c(f_score, F1_Score(valid.pred$class, valid$y, positive="1"))
-precision <- c(precision, Precision(valid.pred$class, valid$y, positive="1"))
-recall <- c(recall, Recall(valid.pred$class, valid$y, positive="1"))
-
-performance_summary <- data.frame(Dataset = dataset, 
+# Display the metrics
+performance_summary <- data.frame(Dataset = c("Train", "Validation"), 
                                   F_score = round(f_score, digits=4), 
                                   Precision = round(precision, digits=4),
                                   Recall = round(recall, digits=4))
-
 performance_summary %>%
    kable()
 ```
 
-## QDA
+**Model assessment:**
+
+The model's performance on the validation set is slightly better than on the training set, which is atypical and could suggest that the model is not overfitting. Meanwhile, the overall low F1 Scores on both could indicate issues with class imbalance, model sensitivity, or lack of relevant features. It can be derived by the non-normal distributions can affect the model's ability to create accurate discriminant functions, which might be contributing to the lower F1 Scores.
+
+## Quadratic Discriminant Analysis (QDA)
+
+In assessing the suitability of Quadratic Discriminant Analysis (QDA) for our dataset, a crucial step is the examination of the covariance structures of each predictor variable within the context of the target classes. QDA, being a more flexible counterpart to Linear Discriminant Analysis (LDA), allows for each class to have its own covariance matrix, capturing the unique spread and correlation of features within each group. This adaptability is particularly advantageous when the assumption of homogeneity of variances (homoscedasticity) across groups -- a prerequisite for LDA -- does not hold. However, the robustness of QDA comes with its own prerequisites; most notably, each class must present a sufficient number of observations to estimate a full-rank, non-singular covariance matrix.
 
 ```{r}
 #| echo: false
 #| warning: false
 
-library(MASS)
+# The number of the numeric predictors
+num_of_numeric_cols <- length(numeric_cols)
 
-QDA_classifier <- qda(y~., data=train[,c(numeric_cols,"y")])
+# Define the covariance matrix
+classes <- levels(train$y)
+numeric_cols
+cov_matrices <- lapply(classes, function(cls) {
+  data_cls <- train[train$y == cls, numeric_cols]
+  cov_matrix <- cov(data_cls)
+  list(cov_matrix = cov_matrix, rank = qr(cov_matrix)$rank)
+})
+
+# Check the rank of each covariance matrix
+cov_ranks <- sapply(cov_matrices, function(cov_info) cov_info$rank)
+print(cov_ranks)
+
+summary_df <- data.frame(
+  Class = classes,
+  Rank = cov_ranks,
+  Num_of_Numeric_Predictors = rep(num_of_numeric_cols, length(classes))
+)
+
+# Display the summary table
+kable(summary_df, caption = "Summary of Numeric Predictors and Covariance Matrix Ranks")
 ```
 
-```{r}
-#| echo: false
-#| warning: false
+**Model assessment:**
 
-library(MLmetrics)
+-   **Mismatch in Feature Count and Matrix Rank**: The ranks of the covariance matrices (40 and 39) are less than the number of numeric predictors (49). This discrepancy indicates rank deficiency in the dataset for both classes. Rank deficiency suggests that not all 49 features are contributing unique information for modeling each class due to perfect multicollinearity among some features or insufficient data to estimate a unique covariance matrix.
 
-dataset <- c("Train","Validation")
-
-set.seed(123)
-# Prediction to train dataset
-train.pred <- predict(QDA_classifier, train[,c(numeric_cols,"y")])
-#train$y <- factor(train$y, levels = levels(train.pred$class))
-
-f_score <- c(F1_Score(train.pred$class, train$y, positive="1"))
-precision <- c(Precision(train.pred$class, train$y, positive="1"))
-recall <- c(Recall(train.pred$class, train$y, positive="1"))
-
-set.seed(123)
-# Prediction to valid dataset
-valid.pred <- predict(QDA_classifier, valid[,c(numeric_cols,"y")])
-#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
-
-f_score <- c(f_score, F1_Score(valid.pred$class, valid$y, positive="1"))
-precision <- c(precision, Precision(valid.pred$class, valid$y, positive="1"))
-recall <- c(recall, Recall(valid.pred$class, valid$y, positive="1"))
-
-performance_summary <- data.frame(Dataset = dataset, 
-                                  F_score = round(f_score, digits=4), 
-                                  Precision = round(precision, digits=4),
-                                  Recall = round(recall, digits=4))
-
-performance_summary %>%
-   kable()
-```
+-   **Implication for QDA:** The QDA assumes that each class has its own covariance matrix, which requires sufficient data to estimate. With a rank deficiency indicated by the ranks of 40 and 39 compared to 49 features, there's a clear signal that the data might not support estimating a full and unique covariance matrix for each class. This could compromise the reliability and stability of the QDA model. The evidence suggests that without addressing the rank deficiency issue, *QDA may not be the most appropriate model for this dataset*.
 
 ## SVM
 
@@ -996,7 +994,7 @@ performance_summary %>%
    kable()
 ```
 
-## Resampling (SMOTE) 
+## Resampling (SMOTE)
 
 Link:
 
