@@ -758,7 +758,8 @@ performance_summary %>%
 
 ## SVM
 
-SVM is a sophisticated classification technique that performs well with both linear and nonlinear data. It attempts to identify the hyperplane that best separates distinct classes in the feature space.
+
+SVM is a powerful classification algorithm that works well for both linear and nonlinear data. It tries to find the hyperplane that best separates different classes in the feature space.
 
 ```{r}
 #| echo: false
