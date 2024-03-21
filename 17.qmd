@@ -758,6 +758,8 @@ performance_summary %>%
 
 ## SVM
 
+SVM is a powerful classification algorithm that works well for both linear and nonlinear data. It tries to find the hyperplane that best separates different classes in the feature space.
+
 ```{r}
 #| echo: false
 #| warning: false
