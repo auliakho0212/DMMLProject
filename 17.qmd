@@ -658,6 +658,8 @@ performance_summary %>%
    kable()
 ```
 
+KNN is a simple and effective classification algorithm suitable for this scenario. It's non-parametric and doesn't make any assumptions about the underlying data distribution. With a relatively large dataset like this (10,000 records), KNN can produce reasonable results without the need for complex tuning or parameter optimization.
+
 ## LQA
 
 ```{r}
@@ -996,7 +998,7 @@ performance_summary %>%
    kable()
 ```
 
-## Resampling (SMOTE) 
+## Resampling (SMOTE)
 
 Link:
 
