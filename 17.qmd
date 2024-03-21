@@ -932,7 +932,7 @@ Which one is the best? Which metrics we should prioritize?
 
 So far, KNN is the best one.
 
-# Next: Improve Performance
+# Improve Performance
 
 ## Feature Selection (Boruta)
 
