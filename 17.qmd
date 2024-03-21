@@ -3,11 +3,11 @@ title: "Bank Term Deposit Subscription Prediction using Machine Learning"
 author: "Team 17"
 editor: visual
 number-sections: true
+editor_options: 
+  chunk_output_type: inline
 format: 
   pdf:
     geometry: "left=2cm, right=2cm, top=2.5cm, bottom=2.5cm"
-editor_options: 
-  chunk_output_type: console
 execute:
   echo: false
   eval: true
@@ -19,7 +19,7 @@ execute:
 
 Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed.
 
-Furthermore, the research question is to make prediction whether the client will subscribe (yes/no) a term deposit or not. There are 19 attributes available in the dataset including bank client data, last contact of the current campaign information, social-economic, and others.
+Furthermore, the research question is to make prediction whether the client will subscribe ("yes"/"no") a term deposit or not. There are 19 attributes available in the dataset including bank client data, last contact of the current campaign information, social-economic, and others.
 
 ```{r}
 #| echo: false
@@ -169,7 +169,7 @@ labs(x = "Subscribe", y = "Count")
 #| fig-cap: The relationship between binary response and continuous explanatory variables.
 #| fig-align: center
 #| fig-width: 4
-#| fig-height: 3
+#| fig-height: 5
 #| message: false
 
 # Creating Boxplot
@@ -681,10 +681,12 @@ library(class)
 
 set.seed(123)
 
-K <- c(1:15)
+K <- c(1:30)
 cv.corr <- c()
 for (k in K){
-  train.pred <- knn.cv(train, train$y, k=k)
+  train.pred <- knn.cv(subset(train, select=-y), 
+                       train$y, 
+                       k=k)
   cv.corr[k] <- mean(train$y == train.pred)
 }
 
@@ -698,7 +700,9 @@ plot(K, cv.corr, type="b", ylab="leave-one-out cross-validation correct classifi
 
 set.seed(123)
 
-KNN_classifier <- knn.cv(train, train$y, k=6)
+KNN_classifier <- knn.cv(subset(train, select=-y), 
+                         train$y, 
+                         k=10)
 ```
 
 ```{r}
@@ -711,7 +715,10 @@ dataset <- c("Train","Validation")
 
 set.seed(123)
 # Prediction to train dataset
-train.pred <- knn(train, train, train$y, k=6)
+train.pred <- knn(subset(train, select=-y), 
+                  subset(train, select=-y), 
+                  train$y, 
+                  k=10)
 train$y <- factor(train$y, levels = levels(train.pred))
 
 f_score <- c(F1_Score(train.pred, train$y, positive="1"))
@@ -720,7 +727,10 @@ recall <- c(Recall(train.pred, train$y, positive="1"))
 
 set.seed(123)
 # Prediction to valid dataset
-valid.pred <- knn(train, valid, train$y, k=6)
+valid.pred <- knn(subset(train, select=-y), 
+                  subset(valid, select=-y), 
+                  train$y, 
+                  k=10)
 valid$y <- factor(valid$y, levels = levels(valid.pred))
 
 f_score <- c(f_score, F1_Score(valid.pred, valid$y, positive="1"))
@@ -846,17 +856,6 @@ SVM is a powerful classification algorithm that works well for both linear and n
 #| echo: false
 #| warning: false
 
-set.seed(123)
-
-cost_range <- c(0.01,0.1,1,10,100)
-degree_range <- 2:5
-gamma_range <- c(0.01,0.1,1,10,100)
-```
-
-```{r}
-#| echo: false
-#| warning: false
-
 library("e1071")
 
 set.seed(123)
@@ -878,7 +877,7 @@ library("e1071")
 
 set.seed(123)
 
-cost_range <- c(1,10,100)
+cost_range <- c(0.01,0.1,1,10,100)
 gamma_range <- c(0.01,0.1,1,10,100)
 str(train)
 
@@ -899,10 +898,10 @@ cost.opt <- SVM_poly$best.parameters[2]
 
 SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", degree=degree.opt, cost=cost.opt)
 
-test_pred <- predict(SVM_classifier, newdata = test)
+#test_pred <- predict(SVM_classifier, newdata = test)
 
-confusion_matrix <- table(test$y, test_pred)
-print(confusion_matrix)
+#confusion_matrix <- table(test$y, test_pred)
+#print(confusion_matrix)
 ```
 
 ```{r}
@@ -946,15 +945,15 @@ The SVM classifier performs moderately well on both datasets, with F-scores of 0
 #| echo: false
 #| warning: false
 
-dataset <- c("DecisionTree","RandomForest","KNN","LDA","QDA","SVM")
+dataset <- c("DecisionTree","RandomForest","KNN","LDA","SVM")
 
 # Prediction to test dataset
 
 # Decision Tree
 
 test.pred <- predict(DT_prune_classifier, 
-                      newdata=subset(test, select = -c(y)),
-                      type="class")
+                     newdata=subset(test, select = -c(y)),
+                     type="class")
 test$y <- factor(test$y, levels = levels(test.pred))
 
 f_score <- c(F1_Score(test.pred, test$y, positive="1"))
@@ -963,9 +962,9 @@ recall <- c(Recall(test.pred, test$y, positive="1"))
 
 # RF
 
-test.pred <- predict(RF_classifier_prune, 
-                      newdata=subset(test, select = -c(y)),
-                      type="class")
+test.pred <- predict(RF_classifier_best, 
+                     newdata=subset(test, select = -c(y)),
+                     type="class")
 test$y <- factor(test$y, levels = levels(test.pred))
 
 f_score <- c(f_score, F1_Score(test.pred, test$y, positive="1"))
@@ -975,7 +974,10 @@ recall <- c(recall, Recall(test.pred, test$y, positive="1"))
 # KNN
 
 set.seed(123)
-test.pred <- knn(train, test, train$y, k=6)
+test.pred <- knn(subset(train, select = -c(y)), 
+                 subset(test, select = -c(y)), 
+                 train$y, 
+                 k=10)
 test$y <- factor(test$y, levels = levels(test.pred))
 
 f_score <- c(f_score, F1_Score(test.pred, test$y, positive="1"))
@@ -987,17 +989,6 @@ recall <- c(recall, Recall(test.pred, test$y, positive="1"))
 set.seed(123)
 # Prediction to valid dataset
 test.pred <- predict(LDA_classifier, test)
-#valid$y <- factor(valid$y, levels = levels(valid.pred$class))
-
-f_score <- c(f_score, F1_Score(test.pred$class, test$y, positive="1"))
-precision <- c(precision, Precision(test.pred$class, test$y, positive="1"))
-recall <- c(recall, Recall(test.pred$class, test$y, positive="1"))
-
-# QDA
-
-set.seed(123)
-# Prediction to valid dataset
-test.pred <- predict(QDA_classifier, test[,c(numeric_cols,"y")])
 #valid$y <- factor(valid$y, levels = levels(valid.pred$class))
 
 f_score <- c(f_score, F1_Score(test.pred$class, test$y, positive="1"))
@@ -1026,7 +1017,52 @@ Which one is the best? Which metrics we should prioritize?
 
 # Conclusion
 
-So far, KNN is the best one.
+So far, Random Forest is the best one.
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(cvms)
+library(tibble)
+
+test.pred <- predict(RF_classifier_best, 
+                     newdata=subset(test, select = -c(y)),
+                     type="class")
+test$y <- factor(test$y, levels = levels(test.pred))
+
+cfm <- tibble("actual" = test$y,
+              "prediction" = test.pred)
+cfm <- table(cfm)
+cfm <- as.tibble(cfm)
+
+plot_confusion_matrix(cfm, 
+                      target_col = "actual", 
+                      prediction_col = "prediction",
+                      counts_col = "n")
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Plot  AUC-ROC
+
+library(ROCR)
+
+test.pred <- predict(RF_classifier_best, 
+                     newdata=subset(test, select = -c(y)),
+                     type="prob")
+score <- prediction(test.pred[,2],test$y)
+perf <- performance(score,"tpr","fpr")
+auc <- performance(score,"auc")
+perfd <- data.frame(x= perf@x.values[1][[1]], y=perf@y.values[1][[1]]) 
+
+ggplot(perfd, aes(x= x, y=y)) + 
+  geom_line() +
+  xlab("False positive rate") + ylab("True positive rate") +
+  ggtitle(paste("Area under the curve:", round(auc@y.values[[1]], 3)))
+```
 
 # Improve Performance
 
@@ -1052,14 +1088,73 @@ boruta_df <- attStats(boruta)
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-summary-rf-performance
+#| tbl-cap: The performance summary of Random Forest.
+
+library(randomForest)
+
+features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
+
+# Define class weight
+class_weights <- c(0.70, 0.30) # higher for minority class
+
+# Create empty dataframe
+results <-data.frame()
+for (nodesize in c(5,10,15,20,30,50))
+  for (ntree in c(5,10,30,50,100,200,300)) {
+    set.seed(123)
+    RF_classifier <- randomForest(y ~ .,
+                                  data=train[,c(features_list,"y")],
+                                  ntree=ntree,
+                                  classwt=class_weights,
+                                  nodesize=nodesize)
+    
+    # predict to the train dataset, using F-score
+    train.pred <- predict(RF_classifier, 
+                          newdata=train[,features_list],
+                          type="class")
+    train$y <- factor(train$y, levels = levels(train.pred))
+    f_score.train <- c(F1_Score(train.pred, train$y, positive="1"))
+    
+    # predict to the validation dataset, using F-score
+    valid.pred <- predict(RF_classifier, 
+                          newdata=valid[,features_list],
+                          type="class")
+    valid$y <- factor(valid$y, levels = levels(valid.pred))
+    f_score.valid <- c(F1_Score(valid.pred, valid$y, positive="1"))
+    
+    # fill in the empty dataframe
+    no.tree <- array(ntree, dim = c(1, 1))
+    node.size <- array(nodesize, dim = c(1, 1))
+    fscore.train <- array(f_score.train, dim = c(1, 1))
+    fscore.valid <- array(f_score.valid, dim = c(1, 1))
+    result <- cbind(node.size, no.tree, fscore.train, fscore.valid)
+    results <- rbind(results, result)
+}
+
+# convert to dataframe
+results <- as.data.frame(results)
+colnames(results) <- c("nodesize","ntree","Fscore_train","Fscore_valid")
+
+results %>% 
+  top_n(n = 3, wt = Fscore_valid) %>%
+  kable()
+```
+
+```{r}
+#| echo: false
+#| warning: false
 
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
 
 set.seed(123)
 
-KNN_classifie_2 <- knn.cv(train[,c(features_list,"y")], 
-                         train$y, 
-                         k=6)
+class_weights <- c(0.70, 0.30)
+RF_classifier_best2 <- randomForest(y ~ .,
+                                    data=train[,c(features_list,"y")],
+                                    classwt=class_weights,
+                                    ntree=30,
+                                    nodesize=200)
 ```
 
 ```{r}
@@ -1072,9 +1167,9 @@ dataset <- c("Test")
 
 set.seed(123)
 # Prediction to test dataset
-test.pred <- knn(train[,c(features_list,"y")], 
-                 test[,c(features_list,"y")], 
-                 train$y, k=6)
+test.pred <- predict(RF_classifier_best2, 
+                     newdata=test[,features_list],
+                     type="class")
 test$y <- factor(test$y, levels = levels(test.pred))
 
 f_score <- c(F1_Score(test.pred, test$y, positive="1"))
@@ -1110,11 +1205,63 @@ set.seed(123)
 
 smote_train <- SMOTE(X = subset(train, select = -c(y)), 
                      target = train[,"y"],
-                     dup_size = 2)
+                     dup_size = 3)
 smote_train <- smote_train$data # extract only the balanced dataset
 smote_train$class <- as.factor(smote_train$class)
 
 table(smote_train$class)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: tbl-summary-rf-performance
+#| tbl-cap: The performance summary of Random Forest.
+
+library(randomForest)
+
+features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
+
+# Create empty dataframe
+results <-data.frame()
+for (nodesize in c(5,10,15,20,30,50))
+  for (ntree in c(5,10,30,50,100,200,300)) {
+    set.seed(123)
+    RF_classifier <- randomForest(class ~ .,
+                                  data=smote_train[,c(features_list,"class")],
+                                  ntree=ntree,
+                                  nodesize=nodesize)
+    
+    # predict to the train dataset, using F-score
+    train.pred <- predict(RF_classifier, 
+                          newdata=smote_train[,features_list],
+                          type="class")
+    smote_train$class <- factor(smote_train$class, levels = levels(train.pred))
+    f_score.train <- c(F1_Score(train.pred, smote_train$class, positive="1"))
+    
+    # predict to the validation dataset, using F-score
+    valid.pred <- predict(RF_classifier, 
+                          newdata=valid[,features_list],
+                          type="class")
+    valid$y <- factor(valid$y, levels = levels(valid.pred))
+    f_score.valid <- c(F1_Score(valid.pred, valid$y, positive="1"))
+    
+    # fill in the empty dataframe
+    no.tree <- array(ntree, dim = c(1, 1))
+    node.size <- array(nodesize, dim = c(1, 1))
+    fscore.train <- array(f_score.train, dim = c(1, 1))
+    fscore.valid <- array(f_score.valid, dim = c(1, 1))
+    result <- cbind(node.size, no.tree, fscore.train, fscore.valid)
+    results <- rbind(results, result)
+}
+
+# convert to dataframe
+results <- as.data.frame(results)
+colnames(results) <- c("nodesize","ntree","Fscore_train","Fscore_valid")
+
+results %>% 
+  top_n(n = 3, wt = Fscore_valid) %>%
+  kable()
 ```
 
 ```{r}
@@ -1125,9 +1272,10 @@ features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
 
 set.seed(123)
 
-KNN_classifie_3 <- knn.cv(smote_train[,c(features_list,"class")], 
-                          smote_train$class, 
-                          k=6)
+RF_classifier_best3 <- randomForest(class ~ .,
+                                    data=smote_train[,c(features_list,"class")],
+                                    ntree=10,
+                                    nodesize=50)
 ```
 
 ```{r}
@@ -1140,9 +1288,9 @@ dataset <- c("Test")
 
 set.seed(123)
 # Prediction to test dataset
-test.pred <- knn(smote_train[,c(features_list,"class")], 
-                 test[,c(features_list,"y")], 
-                 smote_train$class, k=6)
+test.pred <- predict(RF_classifier_best3, 
+                     newdata=test[,c(features_list,"y")],
+                     type="class")
 test$y <- factor(test$y, levels = levels(test.pred))
 
 f_score <- c(F1_Score(test.pred, test$y, positive="1"))
