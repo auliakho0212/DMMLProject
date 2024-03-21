@@ -758,6 +758,7 @@ performance_summary %>%
 
 ## SVM
 
+
 SVM is a powerful classification algorithm that works well for both linear and nonlinear data. It tries to find the hyperplane that best separates different classes in the feature space.
 
 ```{r}
@@ -786,6 +787,8 @@ SVM_poly <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel
 summary(SVM_poly)
 ```
 
+In our SVM parameter tuning procedure with SVM_poly, we used 10-fold cross-validation to test various polynomial degree and cost parameter combinations. Notably, the combination of degree 2 and cost 0.1 resulted in the lowest error rate of 0.1100154, indicating best performance. Moving further, we will investigate another SVM variation, SVM_RBF.
+
 ```{r}
 #| echo: false
 #| warning: false
@@ -796,10 +799,13 @@ set.seed(123)
 
 cost_range <- c(1,10,100)
 gamma_range <- c(0.01,0.1,1,10,100)
+str(train)
 
 SVM_RBF <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", cost=cost_range, gamma=gamma_range)
 summary(SVM_RBF)
 ```
+
+Based on the error rates obtained, the SVM model with the polynomial kernel (SVM_poly) performed marginally better (0.1100154) than the SVM model with the RBF kernel (SVM_RBF), with a lower error rate (0.1112725). Now after extracting the optimal degree and cost parameters obtained from the hyperparameter tuning process, we can do the performance on the test set.
 
 ```{r}
 #| echo: false
@@ -807,12 +813,15 @@ summary(SVM_RBF)
 
 library("e1071")
 
-#degree.opt <- SVM_poly$best.parameters[1]
-#cost.opt <- SVM_poly$best.parameters[2]
+degree.opt <- SVM_poly$best.parameters[1]
+cost.opt <- SVM_poly$best.parameters[2]
 
-# SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", degree=degree.opt, cost=cost.opt)
+SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", degree=degree.opt, cost=cost.opt)
 
-SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", gamma=0.01, cost=100)
+test_pred <- predict(SVM_classifier, newdata = test)
+
+confusion_matrix <- table(test$y, test_pred)
+print(confusion_matrix)
 ```
 
 ```{r}
@@ -847,6 +856,8 @@ performance_summary <- data.frame(Dataset = dataset,
 performance_summary %>%
    kable()
 ```
+
+The SVM classifier performs moderately well on both datasets, with F-scores of 0.2706 and 0.2913 for the training and validation sets, respectively. While the recall values are reasonably high (0.7143 for training and 0.7551 for validation), showing good positive instance capture, the precision is low (0.1669 for training and 0.1805 for validation), indicating a larger rate of false positives. Further fine-tuning, particularly focusing on hyperparameters and potential feature engineering, is required to improve Precision while maintaining Recall.
 
 # Model Selection
 
@@ -998,7 +1009,7 @@ performance_summary %>%
    kable()
 ```
 
-## Resampling (SMOTE) 
+## Resampling (SMOTE)
 
 Link:
 
