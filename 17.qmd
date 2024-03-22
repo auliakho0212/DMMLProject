@@ -15,18 +15,6 @@ execute:
   message: false
 ---
 
-# Introduction {#sec-intro}
-
-Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed. Furthermore, the research question is to make prediction whether the client will subscribe ("yes"/"no") a term deposit or not. There are 20 attributes available in the dataset related to bank client data, last contact of the current campaign information, social-economic, and others.
-
-```{r}
-#| echo: false
-#| warning: false
-
-# Read CSV from data dir
-data <- read_csv("group_17.csv")
-```
-
 ```{r}
 #| echo: false
 #| warning: false
@@ -34,6 +22,7 @@ data <- read_csv("group_17.csv")
 # Import Libraries
 
 library(tidyverse)
+library(tidyr)
 library(gt)
 library(skimr)
 library(knitr)
@@ -54,6 +43,18 @@ library(smotefamily)
 library(cvms)
 library(tibble)
 library(Boruta)
+```
+
+# Introduction {#sec-intro}
+
+Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed. Furthermore, the research question is to make prediction whether the client will subscribe ("yes"/"no") a term deposit or not. There are 20 attributes available in the dataset related to bank client data, last contact of the current campaign information, social-economic, and others.
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Read CSV from data dir
+data <- read_csv("group_17.csv")
 ```
 
 # Exploratory Data Analysis
@@ -309,29 +310,19 @@ ggpairs(training,
         )
 ```
 
-## PCA for Socio-economic Features
-
-Principal Component Analysis is a method to reduce the dimension of correlated variables by creating p linear combinations from p original variables. In this case, correlation-based PCA is used as the variation of standard deviation values.
-
 ```{r}
 #| echo: false
 #| warning: false
-#| label: fig-barplot4
-#| fig-cap: PCA components for Socio-economic features. The first PC can retain ~70% of variation.
-#| fig-align: center
-#| fig-width: 3
-#| fig-height: 3
-#| message: false
 
 # PCA for Socio-economic Features.
 
 # Check standard deviation
-features_sd <- round(sqrt(diag(cov(training[,16:20]))),1)
+#features_sd <- round(sqrt(diag(cov(training[,16:20]))),1)
 # Perform PCA
-socio.econ.pca <- princomp(training[,16:20],cor=T)
+#socio.econ.pca <- princomp(training[,16:20],cor=T)
 # Display summary
-summary_of_pca <- summary(socio.econ.pca)
-plot(socio.econ.pca)
+#summary_of_pca <- summary(socio.econ.pca)
+#plot(socio.econ.pca)
 
 # PC1 vs. subscribe
 #socio.econ.pca2 <- as.data.frame(socio.econ.pca$scores[,1:2])
@@ -353,9 +344,9 @@ Here are the steps for data preprocessing:
 
 -   Remove \~5% of rows containing NAs.
 
--   Perform PCA to socio-economic features, and replace them with first PC.
+-   Perform PCA to socio-economic features, and replace them with first PC (\~70% of cumulative proportion of variance). PCA is a method to reduce the dimension of correlated variables by creating p linear combinations from p original variables. In this case, correlation-based PCA is used as the variation of standard deviation values.
 
--   Perform scaling to numerical features,
+-   Perform scaling to numerical features.
 
 -   Convert categorical features as dummies (one-hot-encoding).
 
@@ -364,9 +355,9 @@ Here are the steps for data preprocessing:
 #| warning: false
 
 # Remove default, pdays, and duration
-train <- train %>% select(-default, -pdays, -duration)
-valid <- valid %>% select(-default, -pdays, -duration)
-test <- test %>% select(-default, -pdays, -duration)
+train <- subset(train, select = -c(default,pdays,duration))
+valid <- subset(valid, select = -c(default,pdays,duration))
+test <- subset(test, select = -c(default,pdays,duration))
 
 # Remove NAs
 train <- na.omit(train)
@@ -905,7 +896,7 @@ set.seed(123)
 
 cost_range <- c(0.01,0.1,1,10,100)
 gamma_range <- c(0.01,0.1,1,10,100)
-str(train)
+# str(train)
 
 SVM_RBF <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", cost=cost_range, gamma=gamma_range)
 
@@ -967,7 +958,7 @@ performance_summary %>%
 
 **Model assessment:**
 
-The SVM classifier performs moderately well on both datasets, with F-scores of 0.2706 and 0.2913 for the training and validation sets, respectively. While the recall values are reasonably high (0.7143 for training and 0.7551 for validation), showing good positive instance capture, the precision is low (0.1669 for training and 0.1805 for validation), indicating a larger rate of false positives. Further fine-tuning, particularly focusing on hyperparameters and potential feature engineering, is required to improve Precision while maintaining Recall.
+The SVM classifier performs moderately well on both datasets, with F-scores of 0.2706 and 0.2913 for the training and validation sets, respectively. While the recall values are reasonably high (0.7143 for training and 0.7551 for validation), showing good positive instance capture, the precision is low (0.1669 for training and 0.1805 for validation), indicating a larger rate of false positives. Further fine-tuning, particularly focusing on hyperparameters and potential feature engineering, is required to improve Precision while maintaining Recall. Another issue could be from a lot of dummy variables.
 
 # Model Selection
 
@@ -1045,7 +1036,7 @@ performance_summary %>%
    kable()
 ```
 
-Based on @tbl-summary-test-performance, Random Forest reveals highest F1 Score (47.30%) and Precision (49.07%), and then LDA (49.57%) reveals highest Recall. In this scenario, lower Precision indicates higher False Positive. On the other hand, lower Recall indicating higher False Negative. In terms of prediction, higher False Positive will lead the marketing team to call non potential clients and loosing productivity, and higher False Negative will increase the risk of loosing potential clients. The most appropriate model is the one than can balance those two, in this matter, Random Forest by looking at the F1 score and the small gap between Precision and Recall.
+Based on @tbl-summary-test-performance, Random Forest reveals highest F1 Score (47.30%) and Precision (49.07%), and then LDA (49.57%) reveals highest Recall. In this scenario, lower Precision indicates higher False Positive. On the other hand, lower Recall indicating higher False Negative. In terms of prediction, higher False Positive will lead the marketing team to call non potential clients and loosing productivity, and higher False Negative will increase the risk of loosing potential clients. The most appropriate model is the one than can balance between those two, in this matter, Random Forest by looking at the F1 score and the small gap between Precision and Recall.
 
 # Conclusion
 
@@ -1083,7 +1074,7 @@ As the accuracy might not be the optimal metrics for imbalance dataset, AUC is t
 ```{r}
 #| echo: false
 #| warning: false
-#| label: fig-rf-cm
+#| label: fig-rf-roc
 #| fig-cap: Random Forest AUC-ROC.
 #| fig-align: center
 #| fig-width: 4
@@ -1128,7 +1119,7 @@ boruta_df <- attStats(boruta)
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-summary-rf-performance2
+#| label: tbl-summary-rf-performance3
 #| tbl-cap: The performance summary of Random Forest (Feature Selection).
 
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
@@ -1248,7 +1239,7 @@ smote_train$class <- as.factor(smote_train$class)
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-summary-rf-performance3
+#| label: tbl-summary-rf-performance4
 #| tbl-cap: The performance summary of Random Forest (Feature Selection).
 
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
@@ -1311,7 +1302,7 @@ RF_classifier_best3 <- randomForest(class ~ .,
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-summary-rf-performance4
+#| label: tbl-summary-rf-performance5
 #| tbl-cap: The performance summary of Random Forest (SMOTE Resampling).
 
 dataset <- c("Test")
@@ -1339,3 +1330,15 @@ performance_summary %>%
 **Model assessment:**
 
 After retraining Random Forest to the SMOTE dataset, it starts to become overfit and the F1 score performance is also decreasing to 46.04%. Further research on how to resample dataset is required to improve the overall process to handle imbalance dataset.
+
+# References
+
+-   Team, D. (2018) *Boruta feature selection in R*, *DataCamp*. Available at: https://www.datacamp.com/tutorial/feature-selection-R-boruta (Accessed: 22 March 2024). 
+
+-   *RPubs*. Available at: https://rpubs.com/hwulanayu/smote-in-r (Accessed: 22 March 2024). 
+
+-   Olsen, L.R. (2024) *Creating a confusion matrix with cvms*. Available at: https://cran.r-project.org/web/packages/cvms/vignettes/Creating_a_confusion_matrix.html (Accessed: 22 March 2024). 
+
+-   Data Mining and Machine Learning Lecture Notes.
+
+-   Advanced Predictive Modeling Lecture Notes.
