@@ -1,6 +1,6 @@
 ---
-title: "Bank Term Deposit Subscription Prediction using Machine Learning"
-author: "Team 17"
+title: "The Prediction of Bank Term Deposit Subscription using Machine Learning"
+author: "Team 17: Yola Kamalita, Burte Ganbold, Aulia Khoirunnisa, Yuang Tian"
 editor: visual
 number-sections: true
 editor_options: 
@@ -17,61 +17,14 @@ execute:
 
 # Introduction {#sec-intro}
 
-Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed.
-
-Furthermore, the research question is to make prediction whether the client will subscribe ("yes"/"no") a term deposit or not. There are 19 attributes available in the dataset including bank client data, last contact of the current campaign information, social-economic, and others.
+Portuguese bank institution launched marketing campaign to promote term deposit subscription. These campaigns are based on phone calls, and more than one contact to the same client is performed. Furthermore, the research question is to make prediction whether the client will subscribe ("yes"/"no") a term deposit or not. There are 20 attributes available in the dataset related to bank client data, last contact of the current campaign information, social-economic, and others.
 
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-dataset-head
-#| tbl-cap: First five entries of the Bank Marketing Dataset
-
-library(tidyverse)
-library(gt)
 
 # Read CSV from data dir
 data <- read_csv("group_17.csv")
-
-# Display the first 5 rows
-data[,1:9] |> 
-  slice_head(n=5) |>
-  gt() |>
-  cols_label(
-    age = html("Age"),
-    job = html("Job"),
-    marital = html("Marital"),
-    education = html("Education"),
-    default = html("Default"),
-    housing = html("Housing"),
-    loan = html("Loan"),
-    contact = html("Contact"),
-    month = html("Month"),
-  )
-
-data[,10:16] |> 
-  slice_head(n=5) |>
-  gt() |>
-  cols_label(
-    day_of_week = html("Day of Week"),
-    duration = html("Duration"),
-    campaign = html("Campaign"),
-    pdays = html("Pdays"),
-    previous = html("Previous"),
-    poutcome = html("Poutcome"),
-    emp.var.rate = html("Employment Variation Rate"),
-  )
-
-data[,17:21] |> 
-  slice_head(n=5) |>
-  gt() |>
-  cols_label(
-    cons.price.idx = html("Consumer Price Index"),
-    cons.conf.idx = html("Consumer Confidence Index"),
-    euribor3m = html("Euribor"),
-    nr.employed = html("Number of Employees"),
-    y = html("Subscribe")
-  )
 ```
 
 ```{r}
@@ -80,6 +33,8 @@ data[,17:21] |>
 
 # Import Libraries
 
+library(tidyverse)
+library(gt)
 library(skimr)
 library(knitr)
 library(ggplot2)
@@ -87,6 +42,17 @@ library(gridExtra)
 library(dplyr)
 library(GGally)
 library(caret)
+library(Boruta)
+library(rpart)
+library(rpart.plot)
+library(MLmetrics)
+library(randomForest)
+library(class)
+library(MASS)
+library(e1071)
+library(smotefamily)
+library(cvms)
+library(tibble)
 library(Boruta)
 ```
 
@@ -98,9 +64,7 @@ library(Boruta)
 #| label: tbl-summary-stats
 #| tbl-cap: Summary statistics of the Bank Marketing Dataset.
 
-# Creating summary statistics
-
-# Summary statistics with adjusted skim()
+# Creating Summary statistics with adjusted skim()
 my_skim <- skim_with(
   base = sfl(n = length),
   character = sfl(min=NULL,max=NULL,empty=NULL,whitespace=NULL),
@@ -108,26 +72,37 @@ my_skim <- skim_with(
 knit_print(my_skim(data))
 ```
 
+## Missing Values
+
 ```{r}
 #| echo: false
 #| warning: false
+#| label: fig-barplot1
+#| fig-cap: The percentage of missing values.
+#| fig-align: center
+#| fig-width: 3
+#| fig-height: 2
+#| message: false
 
 # Compute percentage of missing values
-
 missing_percentages <- data %>%
   summarise_all(~sum(is.na(.)))/nrow(data)
-
 missing_percentages_sorted <- missing_percentages %>%
   gather(key = "Column", value = "Missing_Percentages") %>%
   arrange(desc(Missing_Percentages)) %>%
   filter(Missing_Percentages>0)
 
+# Plot missing values
 ggplot(missing_percentages_sorted, aes(x = reorder(Column, Missing_Percentages), y = Missing_Percentages)) +
   geom_bar(stat = "identity", fill = "steelblue") +
-  labs(title = "Percentage of Missing Values in Each Variable", x = "Variables", y = "Missing Percentages") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Variables", y = "Missing Percentage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6)) +
   coord_flip()
 ```
+
+Variable `default` has missing values around 20%, and the rest are below 5%.
 
 ```{r}
 #| echo: false
@@ -136,31 +111,49 @@ ggplot(missing_percentages_sorted, aes(x = reorder(Column, Missing_Percentages),
 # Split the dataset into Training, Validation, and Test
 
 set.seed(123)
-
 # Split training 80% and test 20%
 index <- sample(1:nrow(data), nrow(data)*0.8)
 training <- data[index, ]
 test <- data[-index, ]
-
 # Split train 60% and validation 20%
 index <- sample(1:nrow(training), nrow(training)*0.75)
 train <- training[index, ]
 valid <- training[-index, ]
-
-# Check the size
-print(paste("Train nrows:", nrow(train)))
-print(paste("Valid nrows:", nrow(valid)))
-print(paste("Test nrows:", nrow(test)))
 ```
+
+## Dataset Split
+
+In this analysis, the data will be splitted into train (60%), validation (20%), and test (20%). Train and validation are used to train the model and find the best hyperparameters. Finally, model comparison will be done using test dataset, which is unseen from all the models during the fitting process.
+
+## Imbalance Classification Problem
 
 ```{r}
 #| echo: false
 #| warning: false
+#| label: fig-barplot2
+#| fig-cap: The subcribe count.
+#| fig-align: center
+#| fig-width: 3
+#| fig-height: 1.25
+#| message: false
 
+# Check the subscribe or response variable imbalance or not
 ggplot(train, aes(x = y)) +
-geom_bar() +  # Create a bar plot
-labs(x = "Subscribe", y = "Count")
+  geom_bar() +  # Create a bar plot
+  labs(x = "Subscribe", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6)) +
+  coord_flip()
 ```
+
+There is a huge gap between subscribe yes (1) or not (0). This is going to be the binary response variable.
+
+## Relationship between Variables
+
+From @fig-boxplot1, some variables are able to distinguish subscribe yes or no, such as duration, number of employees, and euribor. Then, some variables from @fig-barplot3 show that there is noticeable different in terms of percentage of subscribe yes between each own categories. It indicates some variables are useful to give signal whether the client will subscribe or not.
+
+However, based on the density plot @fig-scatterplot, the subscribe yes and no overlaps to each other across the continuous variables. The continuous variables' values are also skewed. Moreover, there are some significant correlations, which are considerably moderate to strong. Those variables belong to social-economic attributes.
 
 ```{r}
 #| echo: false
@@ -175,25 +168,55 @@ labs(x = "Subscribe", y = "Count")
 # Creating Boxplot
 
 p1 <- ggplot(training, aes(x=y, y=age)) + geom_boxplot() +
-  labs(x="subscribe",y="Age")
+  labs(x="subscribe",y="Age") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p2 <- ggplot(training, aes(x=y, y=duration)) + geom_boxplot() +
-  labs(x="subscribe",y="Duration")
+  labs(x="subscribe",y="Duration") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p3 <- ggplot(training, aes(x=y, y=campaign)) + geom_boxplot() +
-  labs(x="subscribe",y="Campaign")
+  labs(x="subscribe",y="Campaign") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p4 <- ggplot(training, aes(x=y, y=pdays)) + geom_boxplot() +
-  labs(x="subscribe",y="Pdays")
+  labs(x="subscribe",y="Pdays") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p5 <- ggplot(training, aes(x=y, y=previous)) + geom_boxplot() +
-  labs(x="subscribe",y="Previous")
+  labs(x="subscribe",y="Previous") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p6 <- ggplot(training, aes(x=y, y=emp.var.rate)) + geom_boxplot() +
-  labs(x="subscribe",y="Emp. Variation Rate")
+  labs(x="subscribe",y="Emp. Variation Rate") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p7 <- ggplot(training, aes(x=y, y=cons.price.idx)) + geom_boxplot() +
-  labs(x="subscribe",y="Cons. Price Index")
+  labs(x="subscribe",y="Cons. Price Index") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p8 <- ggplot(training, aes(x=y, y=cons.conf.idx)) + geom_boxplot() +
-  labs(x="subscribe",y="Cons. Confidence Index")
+  labs(x="subscribe",y="Cons. Confidence Index") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p9 <- ggplot(training, aes(x=y, y=euribor3m)) + geom_boxplot() +
-  labs(x="subscribe",y="Euribor")
+  labs(x="subscribe",y="Euribor") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 p10 <- ggplot(training, aes(x=y, y=nr.employed)) + geom_boxplot() +
-  labs(x="subscribe",y="Number of Employees")
+  labs(x="subscribe",y="Number of Employees") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=6),
+        axis.text.y = element_text(size=6),
+        text = element_text(size=6))
 
 # Plot in Grid
 grid.arrange(p1, p2, p3, p4, 
@@ -204,61 +227,61 @@ grid.arrange(p1, p2, p3, p4,
 ```{r}
 #| echo: false
 #| warning: false
-#| label: fig-barplot
+#| label: fig-barplot3
 #| fig-cap: The relationship between binary response and categorical explanatory variables.
 #| fig-align: center
-#| fig-width: 8
+#| fig-width: 10
 #| fig-height: 20
 #| message: false
 
 p1 <- ggplot(training, aes(x=job, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Job", y="Percent", fill="subscribe") +
+labs(x="Job", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p2 <- ggplot(training, aes(x=marital, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Marital", y="Percent", fill="subscribe") +
+labs(x="Marital", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p3 <- ggplot(training, aes(x=education, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Education", y="Percent", fill="subscribe") +
+labs(x="Education", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p4 <- ggplot(training, aes(x=default, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Default", y="Percent", fill="subscribe") +
+labs(x="Default", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p5 <- ggplot(training, aes(x=housing, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Housing", y="Percent", fill="subscribe") +
+labs(x="Housing", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p6 <- ggplot(training, aes(x=loan, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Loan", y="Percent", fill="subscribe") +
+labs(x="Loan", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p7 <- ggplot(training, aes(x=contact, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Contact", y="Percent", fill="subscribe") +
+labs(x="Contact", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p8 <- ggplot(training, aes(x=month, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Month", y="Percent", fill="subscribe") +
+labs(x="Month", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p9 <- ggplot(training, aes(x=day_of_week, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Day of Week", y="Percent", fill="subscribe") +
+labs(x="Day of Week", y="Percentage", fill="subscribe") +
 coord_flip()
 
 p10 <- ggplot(training, aes(x=poutcome, fill=y)) + geom_bar(position = "fill") +
 scale_y_continuous(labels = scales::percent) +
-labs(x="Poutcome", y="Percent", fill="subscribe") +
+labs(x="Poutcome", y="Percentage", fill="subscribe") +
 coord_flip()
 
 # Plot in Grid
@@ -286,68 +309,60 @@ ggpairs(training,
         )
 ```
 
-According to the plots:
+## PCA for Socio-economic Features
 
--   \[Density Plots\] There is no noticeable pattern from the continuous explanatory variables which are able to distinguish "yes" or "no" subscribe really well.
-
--   \[Scatter Plots\] There are some significant correlations, which are considerably moderate to strong. However, points in their scatterplots are more sparse, because the values between observations are similar to each other. Those variables belong to social-economic attributes. Should we implement PCA?
-
-    -   nr.employed vs. emp.var.rate (0.909)
-
-    -   euribor3m vs. emp.var.rate (0.973)
-
-    -   cons.price.idx vs. emp.var.rate (0.779)
-
-    -   euribor3m vs. nr.employed (0.946)
-
--   \[Density and Box Plots\] Some variables are skewed, is it required to standardize them?
+Principal Component Analysis is a method to reduce the dimension of correlated variables by creating p linear combinations from p original variables. In this case, correlation-based PCA is used as the variation of standard deviation values.
 
 ```{r}
 #| echo: false
 #| warning: false
+#| label: fig-barplot4
+#| fig-cap: PCA components for Socio-economic features. The first PC can retain ~70% of variation.
+#| fig-align: center
+#| fig-width: 3
+#| fig-height: 3
+#| message: false
 
-# Try using PCA
+# PCA for Socio-economic Features.
 
 # Check standard deviation
-round(sqrt(diag(cov(training[,16:20]))),1)
-
+features_sd <- round(sqrt(diag(cov(training[,16:20]))),1)
 # Perform PCA
 socio.econ.pca <- princomp(training[,16:20],cor=T)
-
 # Display summary
-summary(socio.econ.pca)
+summary_of_pca <- summary(socio.econ.pca)
 plot(socio.econ.pca)
 
-socio.econ.pca2 <- as.data.frame(socio.econ.pca$scores[,1:2])
-socio.econ.pca2$y <- training$y
-ggplot(socio.econ.pca2, aes(x=c(1:nrow(training)),y=Comp.1,color=as.factor(y))) + 
-  geom_jitter(width = 0.75, height = 0.75) +
-  labs(x='Index', y='Comp.1', title='PCA')
+# PC1 vs. subscribe
+#socio.econ.pca2 <- as.data.frame(socio.econ.pca$scores[,1:2])
+#socio.econ.pca2$y <- training$y
+#ggplot(socio.econ.pca2, aes(x=c(1:nrow(training)),y=Comp.1,color=as.factor(y))) + 
+#  geom_jitter(width = 0.75, height = 0.75) +
+#  labs(x='Index', y='Comp.1', title='PCA')
 ```
 
 # Data Preprocessing {#section-preprocessing}
 
-Steps:
+Here are the steps for data preprocessing:
 
--   Remove `default` because \~20% of them are NAs, and the rest is only "no" for having credit in default.
+-   Remove `default` because \~20% of them are NAs, and the rest is only categorized as "no" for having credit in default.
 
 -   Remove `pdays` because most of the values marked as 999.
 
--   Remove `duration` as this feature is available after the call, so it should not be used for prediction.
+-   Remove `duration` as this feature is available after the call, so it should not be used for realistic prediction.
 
--   Remove rows containing NAs.
+-   Remove \~5% of rows containing NAs.
 
--   Perform PCA to socio-economic features.
+-   Perform PCA to socio-economic features, and replace them with first PC.
 
 -   Perform scaling to numerical features,
 
--   Convert categorical features as dummies.
+-   Convert categorical features as dummies (one-hot-encoding).
 
 ```{r}
 #| echo: false
 #| warning: false
 
-library(dplyr)
 # Remove default, pdays, and duration
 train <- train %>% select(-default, -pdays, -duration)
 valid <- valid %>% select(-default, -pdays, -duration)
@@ -412,12 +427,7 @@ In this analysis, `rpart` package is being used to build the decision tree. Then
 #| echo: false
 #| warning: false
 #| label: tbl-summary-dt-params
-#| tbl-cap: The performance summary of Decision Tree Hyperpamater Tuning.
-
-# import libraries
-library(rpart)
-library(rpart.plot)
-library(MLmetrics)
+#| tbl-cap: Decision Tree Hyperpamater Tuning.
 
 # create empty dataframe
 results <-data.frame()
@@ -474,6 +484,8 @@ results %>%
 #| label: fig-dt-cp
 #| fig-cap: Hyperparameter tuning for CP Decision Tree
 #| fig-align: center
+#| fig-width: 4
+#| fig-height: 3
 #| message: false
 
 set.seed(123)
@@ -504,6 +516,8 @@ In this case, more weight for minority class is defined by `parms = list(prior =
 #| label: fig-dt-tree
 #| fig-cap: Decision Tree with best hyperparameters
 #| fig-align: center
+#| fig-width: 5
+#| fig-height: 4
 #| message: false
 
 # Build model with best params
@@ -552,7 +566,9 @@ performance_summary %>%
    kable()
 ```
 
-Overall, F1 score for both train and validation dataset is close to each other indicating the model is not over- or under-fitting. However, the performance is not that good, around \~50%.
+**Model assessment:**
+
+Overall, F1 score for both train and validation dataset is close to each other indicating the model is not over- or under-fitting.
 
 ## Random Forest
 
@@ -564,9 +580,7 @@ The hyper-parameters explored are `ntree`, `nodesize`, and `classwt`. In order t
 #| echo: false
 #| warning: false
 #| label: tbl-summary-rf-performance
-#| tbl-cap: The performance summary of Random Forest.
-
-library(randomForest)
+#| tbl-cap: Random Forest Hyperparameter tuning.
 
 # Define class weight
 class_weights <- c(0.70, 0.30) # higher for minority class
@@ -669,15 +683,21 @@ performance_summary %>%
    kable()
 ```
 
-The F1 score between training and validation score is very close to each other, but they are quite low, which is around 50%.
+**Model assessment:**
+
+The F1 score between training and validation score is very close to each other, indicating the model is not overfitting. Overall, the precision and recall are quite low around 50% indicating the model struggling to make correct prediction for minority class, either False Positive or False Negative.
 
 ## KNN
+
+KNN is a simple and effective classification algorithm. It is non-parametric and there is no assumptions about the underlying data distribution. With a relatively large dataset, KNN can produce reasonable prediction without the need for complex tuning or parameter optimization, other than number of neighbors, k. According to our investigation, starting from `k` = 10, there is not noticeable improvement in terms of the cross validation correct classification rate. It can be seen from @fig-knn-tuning.
 
 ```{r}
 #| echo: false
 #| warning: false
-
-library(class)
+#| label: fig-knn-tuning
+#| fig-cap: KNN Hyperparameter Tuning for K, number of neighbors using leave-one-out CV correct prediction score.
+#| fig-align: center
+#| message: false
 
 set.seed(123)
 
@@ -690,16 +710,15 @@ for (k in K){
   cv.corr[k] <- mean(train$y == train.pred)
 }
 
-plot(K, cv.corr, type="b", ylab="leave-one-out cross-validation correct classification rate")
-
+plot(K, cv.corr, type="b")
 ```
 
 ```{r}
 #| echo: false
 #| warning: false
 
+# Fit KNN with best params
 set.seed(123)
-
 KNN_classifier <- knn.cv(subset(train, select=-y), 
                          train$y, 
                          k=10)
@@ -708,8 +727,8 @@ KNN_classifier <- knn.cv(subset(train, select=-y),
 ```{r}
 #| echo: false
 #| warning: false
-
-library(MLmetrics)
+#| label: tbl-summary-knn-performance
+#| tbl-cap: The performance summary of KNN.
 
 dataset <- c("Train","Validation")
 
@@ -746,13 +765,15 @@ performance_summary %>%
    kable()
 
 # Confusion matrix
-conf_matrix <- table(Actual = train$y, Predicted = train.pred)
-cat("Confusion Matrix:\n", conf_matrix, "\n")
-conf_matrix <- table(Actual = valid$y, Predicted = valid.pred)
-cat("Confusion Matrix:\n", conf_matrix, "\n")
+#conf_matrix <- table(Actual = train$y, Predicted = train.pred)
+#cat("Confusion Matrix:\n", conf_matrix, "\n")
+#conf_matrix <- table(Actual = valid$y, Predicted = valid.pred)
+#cat("Confusion Matrix:\n", conf_matrix, "\n")
 ```
 
-KNN is a simple and effective classification algorithm suitable for this scenario. It's non-parametric and doesn't make any assumptions about the underlying data distribution. With a relatively large dataset like this (10,000 records), KNN can produce reasonable results without the need for complex tuning or parameter optimization.
+**Model assessment:**
+
+The performance from KNN is a bit overfitting. It is quite challenging to find k which can balance over- and under- fitting. One thing that we learn F1 score start to become smaller and smaller as the we try to reduce the gap between train and validation. As there are a lot dummy categorical variables, we might need to consider other distance measurement, such as Jaccard Index. The default one in R `class` is Euclidean.
 
 ## Linear Discriminant Analysis (LDA)
 
@@ -771,9 +792,9 @@ The analytical observations suggest that the assumptions requisite for LDA---nor
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-summary-lda-performance
+#| tbl-cap: The performance summary of LDA.
 
-library(MASS)
-library(MLmetrics)
 set.seed(123)
 
 # Run LDA
@@ -815,6 +836,8 @@ In assessing the suitability of Quadratic Discriminant Analysis (QDA) for our da
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-summary-lda-covariance-matrix
+#| tbl-cap: The summary of Covariance Matrix Ranks.
 
 # The number of the numeric predictors
 num_of_numeric_cols <- length(numeric_cols)
@@ -830,7 +853,6 @@ cov_matrices <- lapply(classes, function(cls) {
 
 # Check the rank of each covariance matrix
 cov_ranks <- sapply(cov_matrices, function(cov_info) cov_info$rank)
-print(cov_ranks)
 
 summary_df <- data.frame(
   Class = classes,
@@ -855,8 +877,8 @@ SVM is a powerful classification algorithm that works well for both linear and n
 ```{r}
 #| echo: false
 #| warning: false
-
-library("e1071")
+#| label: tbl-summary-svm-performance-poly
+#| tbl-cap: SVM Polynomial Hyperpamater Tuning.
 
 set.seed(123)
 
@@ -864,16 +886,20 @@ cost_range <- c(0.01,0.1,1,10,100)
 degree_range <- 2:5
 
 SVM_poly <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="polynomial", cost=cost_range, degree=degree_range)
-summary(SVM_poly)
+
+sum_svm_poly <- summary(SVM_poly)
+
+sum_svm_poly$best.parameters %>% 
+  kable()
 ```
 
-In our SVM parameter tuning procedure with SVM_poly, we used 10-fold cross-validation to test various polynomial degree and cost parameter combinations. Notably, the combination of degree 2 and cost 0.1 resulted in the lowest error rate of 0.1100154, indicating best performance. Moving further, we will investigate another SVM variation, SVM_RBF.
+In our SVM parameter tuning procedure with SVM Polynomial, we use 10-fold cross-validation to test various polynomial degree and cost parameter combinations. Notably, the combination of degree 2 and cost 0.1 resulted in the lowest error rate of 0.1100154, indicating best performance. Moving further, we will investigate another SVM variation, SVM RBF.
 
 ```{r}
 #| echo: false
 #| warning: false
-
-library("e1071")
+#| label: tbl-summary-svm-performance-rbf
+#| tbl-cap: SVM RBF Hyperpamater Tuning.
 
 set.seed(123)
 
@@ -882,16 +908,18 @@ gamma_range <- c(0.01,0.1,1,10,100)
 str(train)
 
 SVM_RBF <- tune.svm(as.factor(y)~., data=train, type="C-classification", kernel="radial", cost=cost_range, gamma=gamma_range)
-summary(SVM_RBF)
+
+sum_svm_rbf <- summary(SVM_RBF)
+
+sum_svm_rbf$best.parameters %>% 
+  kable()
 ```
 
-Based on the error rates obtained, the SVM model with the polynomial kernel (SVM_poly) performed marginally better (0.1100154) than the SVM model with the RBF kernel (SVM_RBF), with a lower error rate (0.1112725). Now after extracting the optimal degree and cost parameters obtained from the hyperparameter tuning process, we can do the performance on the test set.
+Based on the error rates obtained, the SVM model with the polynomial kernel performed marginally better (0.1100154) than the SVM model with the RBF kernel, with a lower error rate (0.1112725). Now after extracting the optimal degree and cost parameters obtained from the hyperparameter tuning process, we can do the performance on the validation set.
 
 ```{r}
 #| echo: false
 #| warning: false
-
-library("e1071")
 
 degree.opt <- SVM_poly$best.parameters[1]
 cost.opt <- SVM_poly$best.parameters[2]
@@ -907,8 +935,8 @@ SVM_classifier <- svm(as.factor(y)~., data=train, type="C-classification", kerne
 ```{r}
 #| echo: false
 #| warning: false
-
-library(MLmetrics)
+#| label: tbl-summary-svm-performance
+#| tbl-cap: The performance summary of SVM.
 
 dataset <- c("Train","Validation")
 
@@ -937,6 +965,8 @@ performance_summary %>%
    kable()
 ```
 
+**Model assessment:**
+
 The SVM classifier performs moderately well on both datasets, with F-scores of 0.2706 and 0.2913 for the training and validation sets, respectively. While the recall values are reasonably high (0.7143 for training and 0.7551 for validation), showing good positive instance capture, the precision is low (0.1669 for training and 0.1805 for validation), indicating a larger rate of false positives. Further fine-tuning, particularly focusing on hyperparameters and potential feature engineering, is required to improve Precision while maintaining Recall.
 
 # Model Selection
@@ -944,6 +974,8 @@ The SVM classifier performs moderately well on both datasets, with F-scores of 0
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-summary-test-performance
+#| tbl-cap: The performance summary of all the models on the test set (unseen before).
 
 dataset <- c("DecisionTree","RandomForest","KNN","LDA","SVM")
 
@@ -1013,38 +1045,50 @@ performance_summary %>%
    kable()
 ```
 
-Which one is the best? Which metrics we should prioritize?
+Based on @tbl-summary-test-performance, Random Forest reveals highest F1 Score (47.30%) and Precision (49.07%), and then LDA (49.57%) reveals highest Recall. In this scenario, lower Precision indicates higher False Positive. On the other hand, lower Recall indicating higher False Negative. In terms of prediction, higher False Positive will lead the marketing team to call non potential clients and loosing productivity, and higher False Negative will increase the risk of loosing potential clients. The most appropriate model is the one than can balance those two, in this matter, Random Forest by looking at the F1 score and the small gap between Precision and Recall.
 
 # Conclusion
 
-So far, Random Forest is the best one.
+From the Confusion Matrix @fig-rf-cm, Random Forest shows that only half of True Positive can be correctly predicted. However, the number of FP and FN are quite balance.
+
+## Confusion Matrix
 
 ```{r}
 #| echo: false
 #| warning: false
+#| label: fig-rf-cm
+#| fig-cap: Random Forest Confusion Matrix.
+#| fig-align: center
+#| message: false
 
-library(cvms)
-library(tibble)
-
+# Plot confusion matrix
 test.pred <- predict(RF_classifier_best, 
                      newdata=subset(test, select = -c(y)),
                      type="class")
 test$y <- factor(test$y, levels = levels(test.pred))
-
 cfm <- tibble("actual" = test$y,
               "prediction" = test.pred)
 cfm <- table(cfm)
 cfm <- as.tibble(cfm)
-
 plot_confusion_matrix(cfm, 
                       target_col = "actual", 
                       prediction_col = "prediction",
                       counts_col = "n")
 ```
 
+## AUC-ROC
+
+As the accuracy might not be the optimal metrics for imbalance dataset, AUC is the other alternative. Random Forest reveals a quite high value, 0.769 from scale 1.00, on the test dataset. For ROC, the better the model, the closer the line to the upper-left corner will be. In this case, Random Forest ROC line is in the middle between random classifier (straight-line) and perfect classifier.
+
 ```{r}
 #| echo: false
 #| warning: false
+#| label: fig-rf-cm
+#| fig-cap: Random Forest AUC-ROC.
+#| fig-align: center
+#| fig-width: 4
+#| fig-height: 3
+#| message: false
 
 # Plot  AUC-ROC
 
@@ -1068,15 +1112,11 @@ ggplot(perfd, aes(x= x, y=y)) +
 
 ## Feature Selection (Boruta)
 
-Link: <https://www.datacamp.com/tutorial/feature-selection-R-boruta>
-
 The algorithm to perform top-down search of relevant features using random forest model by iteratively eliminating irrelevant features by comparing original and random shadow features. Boruta does not need human arbitrary decision.
 
 ```{r}
 #| echo: false
 #| warning: false
-
-library(Boruta)
 
 set.seed(123)
 
@@ -1088,10 +1128,8 @@ boruta_df <- attStats(boruta)
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-summary-rf-performance
-#| tbl-cap: The performance summary of Random Forest.
-
-library(randomForest)
+#| label: tbl-summary-rf-performance2
+#| tbl-cap: The performance summary of Random Forest (Feature Selection).
 
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
 
@@ -1136,19 +1174,20 @@ for (nodesize in c(5,10,15,20,30,50))
 results <- as.data.frame(results)
 colnames(results) <- c("nodesize","ntree","Fscore_train","Fscore_valid")
 
-results %>% 
-  top_n(n = 3, wt = Fscore_valid) %>%
-  kable()
+#results %>% 
+#  top_n(n = 3, wt = Fscore_valid) %>%
+#  kable()
 ```
 
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-summary-rf-performance2
+#| tbl-cap: The performance summary of Random Forest (Feature Selection).
 
+# Build RF using selected features.
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
-
 set.seed(123)
-
 class_weights <- c(0.70, 0.30)
 RF_classifier_best2 <- randomForest(y ~ .,
                                     data=train[,c(features_list,"y")],
@@ -1160,8 +1199,6 @@ RF_classifier_best2 <- randomForest(y ~ .,
 ```{r}
 #| echo: false
 #| warning: false
-
-library(MLmetrics)
 
 dataset <- c("Test")
 
@@ -1185,13 +1222,11 @@ performance_summary %>%
    kable()
 ```
 
+**Model assessment:**
+
+One of the way that we can do to improve the performance by only including relevant features. In this case, we re-train Random Forest to the dataset with selected features only, and then F1 Score slightly increases from 47.30% to 48.15%. However, it is not considerably significant.
+
 ## Resampling (SMOTE)
-
-Link:
-
--   <https://spotintelligence.com/2023/02/17/smote-oversampling-python-r/#How_to_use_SMOTE_in_R>
-
--   <https://rpubs.com/hwulanayu/smote-in-r>
 
 Traditional ML might not performing well for imbalanced dataset because it will be bias to the majority class. SMOTE algorithm works by selecting minority class observations randomly and then find k nearest minority class neighbors, and then generate new samples by doing interpolation between them.
 
@@ -1199,26 +1234,22 @@ Traditional ML might not performing well for imbalanced dataset because it will 
 #| echo: false
 #| warning: false
 
-library(smotefamily)
+# Generate more samples for minority class using SMOTE
 
 set.seed(123)
-
 smote_train <- SMOTE(X = subset(train, select = -c(y)), 
                      target = train[,"y"],
                      dup_size = 3)
 smote_train <- smote_train$data # extract only the balanced dataset
 smote_train$class <- as.factor(smote_train$class)
-
-table(smote_train$class)
+# table(smote_train$class)
 ```
 
 ```{r}
 #| echo: false
 #| warning: false
-#| label: tbl-summary-rf-performance
-#| tbl-cap: The performance summary of Random Forest.
-
-library(randomForest)
+#| label: tbl-summary-rf-performance3
+#| tbl-cap: The performance summary of Random Forest (Feature Selection).
 
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
 
@@ -1259,19 +1290,18 @@ for (nodesize in c(5,10,15,20,30,50))
 results <- as.data.frame(results)
 colnames(results) <- c("nodesize","ntree","Fscore_train","Fscore_valid")
 
-results %>% 
-  top_n(n = 3, wt = Fscore_valid) %>%
-  kable()
+# results %>% 
+#  top_n(n = 3, wt = Fscore_valid) %>%
+#  kable()
 ```
 
 ```{r}
 #| echo: false
 #| warning: false
 
+# Build RF using SMOTE samples.
 features_list <- rownames(filter(boruta_df, decision == 'Confirmed'))
-
 set.seed(123)
-
 RF_classifier_best3 <- randomForest(class ~ .,
                                     data=smote_train[,c(features_list,"class")],
                                     ntree=10,
@@ -1281,8 +1311,8 @@ RF_classifier_best3 <- randomForest(class ~ .,
 ```{r}
 #| echo: false
 #| warning: false
-
-library(MLmetrics)
+#| label: tbl-summary-rf-performance4
+#| tbl-cap: The performance summary of Random Forest (SMOTE Resampling).
 
 dataset <- c("Test")
 
@@ -1305,3 +1335,7 @@ performance_summary <- data.frame(Dataset = dataset,
 performance_summary %>%
    kable()
 ```
+
+**Model assessment:**
+
+After retraining Random Forest to the SMOTE dataset, it starts to become overfit and the F1 score performance is also decreasing to 46.04%. Further research on how to resample dataset is required to improve the overall process to handle imbalance dataset.
